@@ -1,19 +1,18 @@
+from datetime import timedelta
 from http import HTTPStatus
 from flask import current_app, jsonify, request
-from app.configs.auth import auth
 from sqlalchemy.orm import Session, Query
 from app.models.user_model import UserModel
-import secrets
+from flask_jwt_extended import create_access_token, jwt_required
 
-
-@auth.login_required
+@jwt_required()
 def get_all_users():
     session: Session = current_app.db.session
 
     user = session.query(UserModel).all()
 
     if not user:
-        return {"error": "usuário não encontrado!"}, HTTPStatus.NOT_FOUND
+        return [], HTTPStatus.OK
 
     return jsonify(user), HTTPStatus.OK
 
@@ -24,7 +23,6 @@ def retrive():
     data = request.get_json()
 
     try:
-        data["api_key"] = secrets.token_urlsafe(32)
         user = UserModel(**data)
 
         session.add(user)
@@ -51,33 +49,33 @@ def login():
        return {"error": "usuário não encontrado."}, HTTPStatus.NOT_FOUND
 
     if user.verify_password(data_2["password_hash"]):
-        data = {
-            "api_key":  user.api_key
-        }
-        return jsonify(data), HTTPStatus.OK
+        accessToken = create_access_token(identity=user, expires_delta=timedelta(minutes=60))
+        return jsonify({"accessToken": accessToken}), HTTPStatus.OK
     else:
         return {"error": "Email ou Senha inválidos!"}, HTTPStatus.UNAUTHORIZED
 
-
-@auth.login_required
+@jwt_required()
 def put_users(id: int):
     session: Session = current_app.db.session
     data: dict = request.get_json()
     
-    user = session.query(UserModel).get(id)
+    try:
+        user = session.query(UserModel).get(id)
 
-    for key, value in data.items():
-        setattr(user, key, value)
+        for key, value in data.items():
+            setattr(user, key, value)
 
-    session.commit()
+        session.commit()
+    
+    except AttributeError:
+        return {"error": "usuário nao encontrado!"}, HTTPStatus.NOT_FOUND
 
     if not user:
         return {"error": "usuário não encontrado!"}, HTTPStatus.NOT_FOUND
 
     return jsonify(user), HTTPStatus.OK
 
-
-@auth.login_required
+@jwt_required()
 def delete_user(id: int):
     session: Session = current_app.db.session
 
